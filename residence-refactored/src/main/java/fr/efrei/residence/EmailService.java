@@ -1,6 +1,7 @@
 package fr.efrei.residence;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class EmailService implements CanalNotification {
@@ -9,20 +10,20 @@ public class EmailService implements CanalNotification {
     public static final String EXPEDITEUR = "gestion@campusvert.fr";
 
     // garde une trace des emails envoyés (demandé par l'administration)
-    public static List<String[]> journal = new ArrayList<String[]>();
+    private final List<Envoi> journal = new ArrayList<>();
 
-    public static boolean envoyer(String destinataire, String sujet, String corps) {
-        try {
-            if (!Utils.emailValide(destinataire)) {
-                throw new Exception("Adresse invalide");
-            }
-            System.out.println("[EMAIL] " + EXPEDITEUR + " -> " + destinataire + " | " + sujet);
-            System.out.println("        " + corps);
-            journal.add(new String[]{destinataire, sujet, corps});
-            return true;
-        } catch (Exception e) {
-            return false;
+    /** Un email à une adresse invalide n'est pas envoyé. */
+    public void envoyer(String destinataire, String sujet, String corps) {
+        if (!Utils.emailValide(destinataire)) {
+            return;
         }
+        System.out.println("[EMAIL] " + EXPEDITEUR + " -> " + destinataire + " | " + sujet);
+        System.out.println("        " + corps);
+        journal.add(new Envoi(destinataire, sujet));
+    }
+
+    public List<Envoi> envois() {
+        return Collections.unmodifiableList(journal);
     }
 
     @Override

@@ -76,7 +76,7 @@ class DecorateursLoyerTest {
     @Test
     void l_assemblage_applique_le_menage_avant_les_prix_fixes_et_la_remise_en_dernier() {
         Logement b105 = new T1("B105", 30, 1, false); // base 440 €
-        double loyer = new CalculateurLoyer().calculerLoyer(b105, Profil.BOURSIER, 4,
+        double loyer = new CalculateurLoyer(new FabriqueRegleTypeLogement(), new FabriqueRegleProfil()).calculerLoyer(b105, Profil.BOURSIER, 4,
                 EnumSet.of(Option.PARKING, Option.MENAGE));
         assertEquals(416.16, loyer, PRECISION); // (440 × 1,08 + 45) × 0,80
     }

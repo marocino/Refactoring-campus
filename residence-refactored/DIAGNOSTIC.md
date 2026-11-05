@@ -40,4 +40,35 @@ Relevé fait sur `residence-legacy` avant tout refactoring.
 | 2 – Factory | fait |
 | 3 – Strategy | fait |
 | 4 – Decorator | fait |
-| 5 à 7 | non traités |
+| 5 – Responsabilité unique et inversion des dépendances | fait |
+| 6 et 7 | non traités |
+
+## Palier 5 : découpage de `GestionResidence`
+
+Chaque classe se décrit en une phrase sans « et ». Seuls `Main` et `NouveauSystemeAdapter` construisent le graphe
+d'objets ; `reinitialiser()` construit simplement un nouveau graphe.
+
+| Classe | Responsabilité |
+|---|---|
+| `ValidateurInscription` | détermine si une demande d'inscription est recevable |
+| `ServiceInscription` | enregistre les nouveaux étudiants dont la demande est recevable |
+| `ServiceParc` | ajoute de nouveaux logements au parc |
+| `ChargeurCatalogue` | remplit le parc à partir du catalogue texte |
+| `ServiceAttribution` | signe un bail sur le premier logement qui convient à l'étudiant |
+| `CycleDeVieBail` | fait passer un bail d'un statut à l'autre |
+| `ServiceRelances` | relance les étudiants qui ont un impayé |
+| `GenerateurRapport` | produit le rapport d'activité |
+| `Notificateur` | prévient un étudiant sur son canal préféré (avec la copie en anglais de son profil) |
+| `EditeurQuittance` | met en forme la quittance d'un mois payé (sortie de `Bail`) |
+| `RepertoireCanaux` | retrouve le service configuré pour un canal |
+| `CompteurIdentifiants` | produit des identifiants successifs (remplace `Etudiant.compteur` et `compteurBail`) |
+
+| Avant | Après |
+|---|---|
+| singleton `Database`, maps `static` | `EtudiantRepository`, `BailRepository` (implémentations `…EnBase` sur une `ConnexionBase` injectée) |
+| `Residence.logements` statique | `LogementRepository` (`LogementRepositoryEnMemoire`) ; `Residence` ne garde que des constantes immuables |
+| `EmailService.journal`, `SmsService.compteurSms`, `CourrierService.totalAffranchissement` statiques | état d'instance ; le rapport lit `SuiviSms` et `SuiviAffranchissement` |
+| `new SmsService()` dans la fabrique de canaux | services injectés dans `RepertoireCanaux` |
+| `new CalculateurLoyer()`, `new Fabrique…()` dans les services | dépendances injectées par constructeur |
+| champs publics mutables de `Bail` et `Paiement` | champs privés, `Bail.enregistrerPaiement`, `Bail.solderAuDepart`, `Paiement` en `record` |
+

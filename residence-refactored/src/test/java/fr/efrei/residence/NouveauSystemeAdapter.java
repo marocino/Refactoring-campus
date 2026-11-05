@@ -14,40 +14,70 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.Set;
 
 /**
- * Branche le nouveau code sur les tests de contrat. Cette classe ne doit contenir que de la traduction.
+ * Branche le nouveau code sur les tests de contrat. Cette classe ne contient que de la traduction et
+ * l'assemblage du graphe d'objets.
  * <p>
  * Les types du contrat ({@code fr.efrei.residence.contrat.*}) et ceux du domaine portent les mêmes noms :
  * les premiers sont toujours écrits avec leur nom complet.
  */
 public class NouveauSystemeAdapter implements SystemeResidence {
 
-    private GestionResidence gestion;
+    private EtudiantRepository etudiants;
+    private BailRepository baux;
+    private LogementRepository parc;
+    private CalculateurLoyer calculateur;
+    private EmailService email;
+    private SmsService sms;
+    private CourrierService courrier;
+    private ServiceParc serviceParc;
+    private ServiceInscription inscriptions;
+    private ServiceAttribution attributions;
+    private CycleDeVieBail cycle;
+    private ServiceRelances relances;
+    private GenerateurRapport rapport;
+    private EditeurQuittance quittances;
 
+    /** Repartir de zéro = construire un nouveau graphe d'objets. */
     @Override
     public void reinitialiser() {
-        // état statique : disparaîtra au palier 5
-        Database.getInstance();
-        Database.etudiants.clear();
-        Database.baux.clear();
-        EmailService.journal.clear();
-        SmsService.journal.clear();
-        CourrierService.journal.clear();
-        SmsService.compteurSms = 0;
-        CourrierService.totalAffranchissement = 0;
-        Etudiant.compteur = 0;
-        GestionResidence.compteurBail = 0;
-        Residence.initialiser();
-        gestion = new GestionResidence();
+        ConnexionBase connexion = new ConnexionBase();
+        etudiants = new EtudiantRepositoryEnBase(connexion);
+        baux = new BailRepositoryEnBase(connexion);
+        parc = new LogementRepositoryEnMemoire();
+        FabriqueLogement fabriqueLogement = new FabriqueLogement();
+        new ChargeurCatalogue(fabriqueLogement).charger(Residence.CATALOGUE, parc);
+
+        FabriqueRegleProfil reglesProfil = new FabriqueRegleProfil();
+        FabriqueRegleTypeLogement reglesType = new FabriqueRegleTypeLogement();
+        calculateur = new CalculateurLoyer(reglesType, reglesProfil);
+
+        email = new EmailService();
+        sms = new SmsService();
+        courrier = new CourrierService();
+        RepertoireCanaux canaux = new RepertoireCanaux(Map.of(
+                Canal.EMAIL, email, Canal.SMS, sms, Canal.COURRIER, courrier));
+        Notificateur notificateur = new Notificateur(canaux, reglesProfil);
+
+        serviceParc = new ServiceParc(parc, fabriqueLogement);
+        inscriptions = new ServiceInscription(new ValidateurInscription(etudiants, reglesProfil), etudiants,
+                new CompteurIdentifiants(ServiceInscription.FORMAT_ID_ETUDIANT));
+        attributions = new ServiceAttribution(parc, baux, calculateur, reglesProfil,
+                new CompteurIdentifiants(ServiceAttribution.FORMAT_ID_BAIL), notificateur);
+        cycle = new CycleDeVieBail(baux, reglesProfil, notificateur);
+        relances = new ServiceRelances(baux, canaux);
+        rapport = new GenerateurRapport(parc, baux, reglesType, sms, courrier);
+        quittances = new EditeurQuittance();
     }
 
     @Override
     public Optional<String> inscrire(DemandeInscription d) {
-        Etudiant e = gestion.inscrireEtudiant(d.nom(), d.prenom(), d.email(), d.telephone(), d.adresse(),
+        Etudiant e = inscriptions.inscrireEtudiant(d.nom(), d.prenom(), d.email(), d.telephone(), d.adresse(),
                 profil(d.profil()), d.echelonBourse(), d.ressourcesMensuelles(), d.pmr(), canal(d.canalPrefere()));
         return Optional.ofNullable(e).map(Etudiant::getId);
     }
@@ -55,106 +85,95 @@ public class NouveauSystemeAdapter implements SystemeResidence {
     @Override
     public boolean ajouterLogement(DemandeLogement d) {
         int param = d.type() == fr.efrei.residence.contrat.TypeLogement.COLOCATION ? d.places() : d.surfaceBalcon();
-        return gestion.ajouterLogement(type(d.type()), d.numero(), d.surface(), d.etage(), d.meuble(), param) != null;
+        return serviceParc.ajouterLogement(type(d.type()), d.numero(), d.surface(), d.etage(), d.meuble(), param) != null;
     }
 
     @Override
     public Optional<EtatLogement> logement(String numero) {
-        return Optional.ofNullable(Residence.trouver(numero)).map(l -> new EtatLogement(l.getNumero(),
+        return parc.trouver(numero).map(l -> new EtatLogement(l.getNumero(),
                 fr.efrei.residence.contrat.TypeLogement.valueOf(l.getType().name()), l.getNombrePlaces(),
                 l.getNombreOccupants(), l.estAccessiblePMR()));
     }
 
     @Override
     public OptionalDouble devisLoyer(DemandeDevis d) {
-        Logement l = Residence.trouver(d.numeroLogement());
-        if (l == null) {
-            return OptionalDouble.empty();
-        }
-        return OptionalDouble.of(new CalculateurLoyer().calculerLoyer(l, profil(d.profil()), d.echelonBourse(),
-                options(d.options())));
+        return parc.trouver(d.numeroLogement())
+                .map(l -> OptionalDouble.of(calculateur.calculerLoyer(l, profil(d.profil()), d.echelonBourse(),
+                        options(d.options()))))
+                .orElse(OptionalDouble.empty());
     }
 
     @Override
     public Optional<String> attribuer(DemandeAttribution d) {
-        Etudiant e = etudiant(d.refEtudiant());
-        if (e == null) {
-            return Optional.empty();
-        }
-        Bail b = gestion.attribuerLogement(e, type(d.type()), options(d.options()), d.dateSignature());
-        return Optional.ofNullable(b).map(Bail::getId);
+        return etudiants.trouverParId(d.refEtudiant())
+                .map(e -> attributions.attribuerLogement(e, type(d.type()), options(d.options()), d.dateSignature()))
+                .map(Bail::getId);
     }
 
     @Override
     public Optional<EtatBail> consulter(String idBail) {
-        return Optional.ofNullable(Database.baux.get(idBail)).map(b -> new EtatBail(b.getId(),
+        return baux.trouver(idBail).map(b -> new EtatBail(b.getId(),
                 b.getLogement().getNumero(), fr.efrei.residence.contrat.StatutBail.valueOf(b.getStatut().name()),
                 b.getLoyerHorsCharges(), b.getCharges(), b.getLoyerChargesComprises(), b.getCaution(),
-                b.getFraisDossier(), b.getDateFin(), b.soldeDu, b.cautionRestituee));
+                b.getFraisDossier(), b.getDateFin(), b.getSoldeDu(), b.getCautionRestituee()));
     }
 
     @Override
     public boolean entrer(String idBail, LocalDate date) {
-        return gestion.entrerDansLesLieux(idBail, date);
+        return cycle.entrerDansLesLieux(idBail, date);
     }
 
     @Override
     public boolean payer(String idBail, YearMonth mois, LocalDate date, double montant) {
-        return gestion.payerLoyer(idBail, mois.toString(), date, montant);
+        return cycle.payerLoyer(idBail, mois.toString(), date, montant);
     }
 
     @Override
     public boolean donnerPreavis(String idBail, LocalDate date) {
-        return gestion.donnerPreavis(idBail, date);
+        return cycle.donnerPreavis(idBail, date);
     }
 
     @Override
     public boolean sortir(String idBail, LocalDate date, double retenuesDegats) {
-        return gestion.sortir(idBail, date, retenuesDegats);
+        return cycle.sortir(idBail, date, retenuesDegats);
     }
 
     @Override
     public boolean annuler(String idBail) {
-        return gestion.annulerBail(idBail);
+        return cycle.annulerBail(idBail);
     }
 
     @Override
     public Optional<String> quittance(String idBail, YearMonth mois) {
-        return Optional.ofNullable(Database.baux.get(idBail)).map(b -> b.genererQuittance(mois.toString()));
+        return baux.trouver(idBail).map(b -> quittances.generer(b, mois.toString()));
     }
 
     @Override
     public void relancerImpayes() {
-        gestion.relancerImpayes();
+        relances.relancerImpayes();
     }
 
     @Override
     public String rapport() {
-        return gestion.genererRapport();
+        return rapport.genererRapport();
     }
 
     @Override
     public List<Notification> notifications() {
         List<Notification> notifications = new ArrayList<>();
-        for (String[] email : EmailService.journal) {
-            notifications.add(new Notification(fr.efrei.residence.contrat.Canal.EMAIL, email[0], email[1]));
-        }
-        for (String[] sms : SmsService.journal) {
-            notifications.add(new Notification(fr.efrei.residence.contrat.Canal.SMS, sms[0], sms[1]));
-        }
-        for (String[] courrier : CourrierService.journal) {
-            notifications.add(new Notification(fr.efrei.residence.contrat.Canal.COURRIER, courrier[0], courrier[1]));
-        }
+        ajouter(notifications, fr.efrei.residence.contrat.Canal.EMAIL, email.envois());
+        ajouter(notifications, fr.efrei.residence.contrat.Canal.SMS, sms.envois());
+        ajouter(notifications, fr.efrei.residence.contrat.Canal.COURRIER, courrier.envois());
         return notifications;
     }
 
-    // ------------------------------------------------------------------ traduction contrat -> domaine
+    // ------------------------------------------------------------------ traduction domaine <-> contrat
 
-    private static Etudiant etudiant(String ref) {
-        for (Etudiant e : Database.etudiants.values()) {
-            if (e.getId().equals(ref)) return e;
+    private static void ajouter(List<Notification> notifications, fr.efrei.residence.contrat.Canal canal,
+                                List<Envoi> envois) {
+        for (Envoi envoi : envois) {
+            notifications.add(new Notification(canal, envoi.destinataire(), envoi.objet()));
         }
-        return null;
     }
 
     private static Profil profil(fr.efrei.residence.contrat.Profil p) {

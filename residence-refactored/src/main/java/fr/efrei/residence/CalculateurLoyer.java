@@ -10,8 +10,13 @@ public class CalculateurLoyer {
 
     static final int ETAGE_REZ_DE_CHAUSSEE = 0;
 
-    private final FabriqueRegleTypeLogement reglesType = new FabriqueRegleTypeLogement();
-    private final FabriqueRegleProfil reglesProfil = new FabriqueRegleProfil();
+    private final FabriqueRegleTypeLogement reglesType;
+    private final FabriqueRegleProfil reglesProfil;
+
+    public CalculateurLoyer(FabriqueRegleTypeLogement reglesType, FabriqueRegleProfil reglesProfil) {
+        this.reglesType = reglesType;
+        this.reglesProfil = reglesProfil;
+    }
 
     /** Loyer mensuel hors charges, options comprises, remise déduite, arrondi au centime. */
     public double calculerLoyer(Logement l, Profil profil, int echelon, Set<Option> options) {

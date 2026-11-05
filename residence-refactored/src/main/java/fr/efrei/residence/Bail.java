@@ -5,15 +5,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class Bail {
 
-    private String id;
-    private Etudiant etudiant;
-    private Logement logement;
-    private LocalDate dateSignature;
+    private final String id;
+    private final Etudiant etudiant;
+    private final Logement logement;
+    private final LocalDate dateSignature;
     private LocalDate dateEntree;
     private LocalDate dateFin;
     private StatutBail statut;
@@ -25,10 +25,10 @@ public class Bail {
 
     private final Set<Option> options;
 
-    public List<Paiement> paiements = new ArrayList<Paiement>();
-    public double soldeDu = 0;
-    public double retenues = 0;
-    public double cautionRestituee = 0;
+    private final List<Paiement> paiements = new ArrayList<>();
+    private double soldeDu = 0;
+    private double retenues = 0;
+    private double cautionRestituee = 0;
 
     public Bail(String id, Etudiant etudiant, Logement logement, LocalDate dateSignature, Set<Option> options) {
         this.id = id;
@@ -39,6 +39,7 @@ public class Bail {
         this.statut = StatutBail.SIGNE;
     }
 
+    /** Options choisies, dans l'ordre de déclaration de {@link Option}. */
     public Set<Option> getOptions() { return Collections.unmodifiableSet(options); }
 
     public String getId() { return id; }
@@ -61,46 +62,32 @@ public class Bail {
     public double getFraisDossier() { return fraisDossier; }
     public void setFraisDossier(double f) { this.fraisDossier = f; }
 
-    public String listerOptions() {
-        if (options.isEmpty()) return "aucune";
-        // EnumSet : parcours dans l'ordre de déclaration de Option
-        return options.stream().map(Option::getLibelle).collect(Collectors.joining(", "));
+    /** Solde restant dû ; négatif en cas d'avance. */
+    public double getSoldeDu() { return soldeDu; }
+    public double getRetenues() { return retenues; }
+    public double getCautionRestituee() { return cautionRestituee; }
+
+    public List<Paiement> getPaiements() { return Collections.unmodifiableList(paiements); }
+
+    /** Ajoute le paiement ; l'écart entre le dû et le payé est reporté sur le solde. */
+    public void enregistrerPaiement(Paiement p) {
+        paiements.add(p);
+        soldeDu = Utils.arrondir(soldeDu + p.du() - p.montant());
     }
 
-    /**
-     * Quittance de loyer pour un mois payé (format AAAA-MM).
-     */
-    public String genererQuittance(String mois) {
-        Paiement p = null;
-        for (Paiement x : paiements) {
-            if (x.mois.equals(mois)) p = x;
+    /** Dernier paiement enregistré pour ce mois (format AAAA-MM). */
+    public Optional<Paiement> paiementDe(String mois) {
+        Paiement trouve = null;
+        for (Paiement p : paiements) {
+            if (p.mois().equals(mois)) trouve = p;
         }
-        if (p == null) {
-            return "Aucun paiement pour " + mois;
-        }
-        String q = "";
-        q += "==========================================\n";
-        q += "   RÉSIDENCE CAMPUS VERT - QUITTANCE\n";
-        q += "==========================================\n";
-        q += "Bail      : " + id + "\n";
-        q += "Locataire : " + etudiant.getNomComplet() + " (" + etudiant.getProfil() + ")\n";
-        q += "Logement  : " + logement.getNumero() + " - " + logement.getType() + " " + logement.getSurface() + " m²";
-        if (logement.isMeuble()) q += " meublé";
-        q += "\n";
-        q += "Période   : " + mois + "\n";
-        q += "Options   : " + listerOptions() + "\n";
-        q += "------------------------------------------\n";
-        q += "Loyer HC  : " + Utils.euros(loyerHorsCharges) + "\n";
-        q += "Charges   : " + Utils.euros(charges) + "\n";
-        if (p.penalite > 0) {
-            q += "Pénalité  : " + Utils.euros(p.penalite) + "\n";
-        }
-        q += "Total dû  : " + Utils.euros(p.du) + "\n";
-        q += "Payé le   : " + Utils.date(p.date) + " : " + Utils.euros(p.montant) + "\n";
-        if (p.montant < p.du) {
-            q += "RESTE DÛ  : " + Utils.euros(Utils.arrondir(p.du - p.montant)) + "\n";
-        }
-        q += "==========================================";
-        return q;
+        return Optional.ofNullable(trouve);
+    }
+
+    /** Arrêté des comptes au départ : retenues appliquées, dépôt restitué, reste à payer. */
+    public void solderAuDepart(double retenues, double cautionRestituee, double resteDu) {
+        this.retenues = Utils.arrondir(retenues);
+        this.cautionRestituee = Utils.arrondir(cautionRestituee);
+        this.soldeDu = Utils.arrondir(resteDu);
     }
 }
