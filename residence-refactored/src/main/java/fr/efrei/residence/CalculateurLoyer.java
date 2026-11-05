@@ -1,43 +1,46 @@
 package fr.efrei.residence;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.UnaryOperator;
+
+/** Assemble la chaîne de décorateurs du loyer : seul endroit qui connaît l'ordre des couches. */
 public class CalculateurLoyer {
 
-    // majorations et minorations
-    static final double COEF_MEUBLE = 1.15;
-    static final double COEF_REZ_DE_CHAUSSEE = 0.95;
     static final int ETAGE_REZ_DE_CHAUSSEE = 0;
-
-    // options à prix fixe
-    static final double PRIX_PARKING = 45;
-    static final double PRIX_LAVERIE = 12;
-    static final double PRIX_ASSURANCE = 9;
 
     private final FabriqueRegleTypeLogement reglesType = new FabriqueRegleTypeLogement();
     private final FabriqueRegleProfil reglesProfil = new FabriqueRegleProfil();
 
-    /**
-     * Loyer mensuel hors charges, options comprises, remise déduite.
-     */
-    public double calculerLoyer(Logement l, Profil profil, int echelon, boolean parking, boolean menage,
-                                boolean laverie, boolean fibre, boolean assurance) {
-        RegleTypeLogement type = reglesType.pour(l.getType());
-        double loyer = type.loyerDeBase(l);
-
-        if (l.isMeuble()) loyer = loyer * COEF_MEUBLE;
-        if (l.getEtage() == ETAGE_REZ_DE_CHAUSSEE) loyer = loyer * COEF_REZ_DE_CHAUSSEE;
-
-        // options
-        if (menage) loyer = loyer * type.coefMenage();
-        if (parking) loyer = loyer + PRIX_PARKING;
-        if (laverie) loyer = loyer + PRIX_LAVERIE;
-        if (fibre) loyer = loyer + type.prixFibre();
-        if (assurance) loyer = loyer + PRIX_ASSURANCE;
-
-        loyer = reglesProfil.pour(profil).appliquerRemise(loyer, echelon);
-        return Utils.arrondir(loyer);
+    /** Loyer mensuel hors charges, options comprises, remise déduite, arrondi au centime. */
+    public double calculerLoyer(Logement l, Profil profil, int echelon, Set<Option> options) {
+        return Utils.arrondir(assembler(l, profil, echelon, options).montant());
     }
 
     public double calculerCharges(Logement l) {
         return reglesType.pour(l.getType()).charges();
+    }
+
+    Loyer assembler(Logement l, Profil profil, int echelon, Set<Option> options) {
+        RegleTypeLogement type = reglesType.pour(l.getType());
+        Loyer loyer = new LoyerDeBase(l, type);
+        if (l.isMeuble()) loyer = new MajorationMeuble(loyer);
+        if (l.getEtage() == ETAGE_REZ_DE_CHAUSSEE) loyer = new MinorationRezDeChaussee(loyer);
+        for (Map.Entry<Option, UnaryOperator<Loyer>> couche : couchesOptions(type).entrySet()) {
+            if (options.contains(couche.getKey())) loyer = couche.getValue().apply(loyer);
+        }
+        return new RemiseProfil(loyer, reglesProfil.pour(profil), echelon);
+    }
+
+    /** Les options dans leur ordre d'application : le pourcentage (ménage) avant les prix fixes. */
+    private static Map<Option, UnaryOperator<Loyer>> couchesOptions(RegleTypeLogement type) {
+        Map<Option, UnaryOperator<Loyer>> couches = new LinkedHashMap<>();
+        couches.put(Option.MENAGE, loyer -> new OptionMenage(loyer, type));
+        couches.put(Option.PARKING, OptionParking::new);
+        couches.put(Option.LAVERIE, OptionLaverie::new);
+        couches.put(Option.FIBRE, loyer -> new OptionFibre(loyer, type));
+        couches.put(Option.ASSURANCE, OptionAssurance::new);
+        return couches;
     }
 }

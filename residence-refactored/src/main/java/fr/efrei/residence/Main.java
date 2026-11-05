@@ -1,6 +1,13 @@
 package fr.efrei.residence;
 
 import java.time.LocalDate;
+import java.util.EnumSet;
+
+import static fr.efrei.residence.Option.ASSURANCE;
+import static fr.efrei.residence.Option.FIBRE;
+import static fr.efrei.residence.Option.LAVERIE;
+import static fr.efrei.residence.Option.MENAGE;
+import static fr.efrei.residence.Option.PARKING;
 
 public class Main {
 
@@ -35,13 +42,13 @@ public class Main {
 
         System.out.println();
         LocalDate signature = LocalDate.of(2026, 8, 25);
-        Bail bA = gestion.attribuerLogement(alice, TypeLogement.STUDIO, true, false, false, false, true, signature);
-        Bail bB = gestion.attribuerLogement(bilal, TypeLogement.COLOCATION, false, true, true, true, false, signature);
-        Bail bC = gestion.attribuerLogement(chloe, TypeLogement.T1, false, false, true, true, true, signature);
-        Bail bD = gestion.attribuerLogement(diego, TypeLogement.T2, true, true, false, true, true, signature);
-        Bail bE = gestion.attribuerLogement(emma, TypeLogement.COLOCATION, false, false, false, true, false, signature);
-        Bail bG = gestion.attribuerLogement(gaelle, TypeLogement.STUDIO, false, true, false, true, false, signature);
-        Bail bH = gestion.attribuerLogement(hugo, TypeLogement.COLOCATION, false, true, false, false, true, signature);
+        Bail bA = gestion.attribuerLogement(alice, TypeLogement.STUDIO, EnumSet.of(PARKING, ASSURANCE), signature);
+        Bail bB = gestion.attribuerLogement(bilal, TypeLogement.COLOCATION, EnumSet.of(MENAGE, LAVERIE, FIBRE), signature);
+        Bail bC = gestion.attribuerLogement(chloe, TypeLogement.T1, EnumSet.of(LAVERIE, FIBRE, ASSURANCE), signature);
+        Bail bD = gestion.attribuerLogement(diego, TypeLogement.T2, EnumSet.of(PARKING, MENAGE, FIBRE, ASSURANCE), signature);
+        Bail bE = gestion.attribuerLogement(emma, TypeLogement.COLOCATION, EnumSet.of(FIBRE), signature);
+        Bail bG = gestion.attribuerLogement(gaelle, TypeLogement.STUDIO, EnumSet.of(MENAGE, FIBRE), signature);
+        Bail bH = gestion.attribuerLogement(hugo, TypeLogement.COLOCATION, EnumSet.of(MENAGE, ASSURANCE), signature);
 
         System.out.println();
         LocalDate rentree = LocalDate.of(2026, 9, 1);
