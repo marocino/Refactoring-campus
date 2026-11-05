@@ -12,7 +12,6 @@ public class GestionResidence {
     static final int ECHELON_MIN = 0;
     static final int ECHELON_MAX = 7;
     static final String PREFIXE_TELEPHONE_INTERNATIONAL = "+";
-    static final int PLACES_MIN_COLOCATION = 2;
 
     static final int MULTIPLE_SOLVABILITE = 3;
     static final int MULTIPLE_SOLVABILITE_ALTERNANT = 2;
@@ -34,6 +33,8 @@ public class GestionResidence {
 
     private Database db = Database.getInstance();
     private CalculateurLoyer calculateur = new CalculateurLoyer();
+    private FabriqueLogement fabriqueLogement = new FabriqueLogement();
+    private FabriqueCanalNotification canaux = new FabriqueCanalNotification();
 
     // ------------------------------------------------------------------ étudiants
 
@@ -99,12 +100,7 @@ public class GestionResidence {
             System.out.println("Logement " + numero + " existe déjà");
             return null;
         }
-        Logement l = switch (type) {
-            case STUDIO -> new Studio(numero, surface, etage, meuble);
-            case T1 -> new T1(numero, surface, etage, meuble);
-            case T2 -> new T2(numero, surface, etage, meuble, param);
-            case COLOCATION -> new Colocation(numero, surface, etage, meuble, Math.max(param, PLACES_MIN_COLOCATION));
-        };
+        Logement l = fabriqueLogement.creer(type, numero, surface, etage, meuble, param);
         Residence.logements.add(l);
         System.out.println("Logement ajouté : " + numero + " (" + type + ")");
         return l;
@@ -342,14 +338,7 @@ public class GestionResidence {
             if (b.soldeDu <= 0) continue;
             if (b.getStatut() == StatutBail.ANNULE) continue;
             Etudiant e = b.getEtudiant();
-            switch (e.getCanalPrefere()) {
-                case EMAIL -> EmailService.envoyer(e.getEmail(), "RELANCE - loyer impayé",
-                        "Bonjour " + e.getPrenom() + ", il reste " + Utils.euros(b.soldeDu) + " à régler sur le bail " + b.getId() + ".");
-                case SMS -> new SmsService().envoyerSms(e.getTelephone(),
-                        "Campus Vert : " + Utils.euros(b.soldeDu) + " impayés sur " + b.getId());
-                case COURRIER -> new CourrierService().imprimerEtPoster(e.getNomComplet(), e.getAdresse(),
-                        "Relance loyer impayé", "Il reste " + Utils.euros(b.soldeDu) + " à régler sur le bail " + b.getId() + ".");
-            }
+            canaux.pour(e.getCanalPrefere()).relancerImpaye(e, b.getId(), b.soldeDu);
         }
     }
 
@@ -423,14 +412,10 @@ public class GestionResidence {
 
     private void notifier(Etudiant e, String sujet, String message) {
         Canal canal = e.getCanalPrefere();
-        switch (canal) {
-            case EMAIL -> EmailService.envoyer(e.getEmail(), sujet, message);
-            case SMS -> new SmsService().envoyerSms(e.getTelephone(), sujet + " - " + message);
-            case COURRIER -> new CourrierService().imprimerEtPoster(e.getNomComplet(), e.getAdresse(), sujet, message);
-        }
+        canaux.pour(canal).notifier(e, sujet, message);
         // les internationaux reçoivent toujours un email en plus (demande de l'administration)
         if (e.getProfil() == Profil.INTERNATIONAL && canal != Canal.EMAIL) {
-            EmailService.envoyer(e.getEmail(), PREFIXE_EMAIL_ANGLAIS + sujet, message);
+            canaux.pour(Canal.EMAIL).notifier(e, PREFIXE_EMAIL_ANGLAIS + sujet, message);
         }
     }
 }

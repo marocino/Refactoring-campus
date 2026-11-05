@@ -23,6 +23,8 @@ public class Residence {
             "COLOCATION;C001;63;0;true;3",
     };
 
+    private static final FabriqueLogement FABRIQUE = new FabriqueLogement();
+
     public static List<Logement> logements = new ArrayList<Logement>();
 
     public static void initialiser() {
@@ -40,13 +42,7 @@ public class Residence {
                 System.out.println("Type inconnu ignoré : " + code);
                 continue;
             }
-            Logement l = switch (type) {
-                case STUDIO -> new Studio(numero, surface, etage, meuble);
-                case T1 -> new T1(numero, surface, etage, meuble);
-                case T2 -> new T2(numero, surface, etage, meuble, param);
-                case COLOCATION -> new Colocation(numero, surface, etage, meuble, param);
-            };
-            logements.add(l);
+            logements.add(FABRIQUE.creer(type, numero, surface, etage, meuble, param));
         }
     }
 
