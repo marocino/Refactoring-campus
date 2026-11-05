@@ -27,6 +27,8 @@ public interface ILogement {
 
     Etudiant getOccupant();
 
+    int getNombreOccupants();
+
     // --- colocation ---
     void ajouterColocataire(Etudiant e);
 

@@ -38,6 +38,6 @@ Relevé fait sur `residence-legacy` avant tout refactoring.
 | 0 – Mise en place | fait |
 | 1 – Enums et constantes | fait |
 | 2 – Factory | fait |
-| 3 – Strategy | à faire |
+| 3 – Strategy | fait |
 | 4 – Decorator | à faire |
 | 5 à 7 | non traités |

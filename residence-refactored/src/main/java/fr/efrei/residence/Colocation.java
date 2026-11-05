@@ -45,6 +45,11 @@ public class Colocation extends Logement {
         colocataires.remove(e);
     }
 
+    @Override
+    public int getNombreOccupants() {
+        return colocataires.size();
+    }
+
     public List<Etudiant> getColocataires() {
         return colocataires;
     }
